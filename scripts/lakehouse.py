@@ -49,6 +49,7 @@ def reset(*paths: str) -> None:
 # config change, not a code change — that's the whole point of the REST spec.
 
 ICEBERG_ROOT = ROOT / "iceberg"
+_CATALOGS = {}
 
 
 def _catalog_dir(name: str) -> Path:
@@ -77,13 +78,29 @@ def catalog(name: str = "lab"):
     """
     from pyiceberg.catalog.sql import SqlCatalog
 
+    # Keep one catalog per name in this process. Besides avoiding needless
+    # SQLite connection pools, this lets reset_catalog() explicitly dispose
+    # the engine before removing the directory on Windows (where an open
+    # SQLite file cannot be unlinked).
     d = _catalog_dir(name)
+    key = (name, str(d.resolve()))
+    if key in _CATALOGS:
+        return _CATALOGS[key]
+
+    # Tests and advanced users may redirect LAKEHOUSE_ROOT in-process. Close a
+    # same-named catalog that points at the previous root before opening the
+    # replacement, otherwise SQLite keeps the old temporary directory locked.
+    for stale_key in [k for k in _CATALOGS if k[0] == name and k != key]:
+        _CATALOGS.pop(stale_key).engine.dispose()
+
     (d / "warehouse").mkdir(parents=True, exist_ok=True)
-    return SqlCatalog(
+    cat = SqlCatalog(
         name,
         uri=f"sqlite:///{d / 'catalog.db'}",
         warehouse=f"file://{d / 'warehouse'}",
     )
+    _CATALOGS[key] = cat
+    return cat
 
 
 def reset_catalog(name: str = "lab") -> None:
@@ -93,6 +110,10 @@ def reset_catalog(name: str = "lab") -> None:
     """
     import shutil
 
+    key = (name, str(_catalog_dir(name).resolve()))
+    cat = _CATALOGS.pop(key, None)
+    if cat is not None:
+        cat.engine.dispose()
     shutil.rmtree(_catalog_dir(name), ignore_errors=True)
 
 

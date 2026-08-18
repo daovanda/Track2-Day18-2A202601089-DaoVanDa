@@ -12,6 +12,12 @@ derby.log
 _lakehouse/
 notebooks/*.ipynb
 notebooks-spark/*.ipynb
+# The eight executed lightweight notebooks are submission artifacts. Keep
+# ad-hoc notebooks ignored while allowing the graded files to be committed.
+!notebooks/0[1-8]_*.ipynb
 .pytest_cache/
+.pytest_tmp/
+.jupyter_config/
+.jupyter_data/
 .venv*/
 _minio-data/
